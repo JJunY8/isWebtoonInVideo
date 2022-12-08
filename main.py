@@ -176,9 +176,10 @@ SEARCH_KEYWORD = input('검색어를 입력하세요 : ').replace(' ', '+')
 PAGE_NUMGER = input('스크롤링 횟수를 입력하세요 : ')
 
 #webtooninfo 연결 수립
-con = pymysql.connect(host='127.0.0.1', user='root', password='root',
-                      db='webtoonDataDB', charset='utf8mb4', autocommit=True)
+con = pymysql.connect(host='34.64.236.142', user='root', password='root',
+                      db='webtooninfodb', charset='utf8mb4', autocommit=True)
 cur = con.cursor()
+print(con)
 
 #동영상 플랫폼 영상 수집
 driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
@@ -208,7 +209,7 @@ for contentlink in content_total_link :
 
     try :
         # 정보 저장용 sql문
-        sql = "insert into webtooninfo (id, title, link, uploader, video_length, keyword) values ('{}', '{}', '{}', '{}', '{}', '{}')".format(
+        sql = "insert into WebtoonInfo (id, title, link, uploader, video_length, keyword) values ('{}', '{}', '{}', '{}', '{}', '{}')".format(
             id, title, contentlink, uploader, length, SEARCH_KEYWORD)
         cur.execute(sql)
     except :
@@ -216,11 +217,11 @@ for contentlink in content_total_link :
 
 
 #이전에 저장한 데이터와 중복된 영상을 db에서 제거하는 sql문
-sql = '''DELETE FROM webtooninfo WHERE id IN (SELECT id FROM (SELECT id FROM webtooninfo GROUP BY link HAVING count(*) > 1) temp_table);'''
+sql = '''DELETE FROM WebtoonInfo WHERE id IN (SELECT id FROM (SELECT id FROM WebtoonInfo GROUP BY link HAVING count(*) > 1) temp_table);'''
 cur.execute(sql)
 
 #작업에 필요한 컬럼을 다운로드. id컬럼과 link컬럼, video_length 컬럼 가져오기
-bringinfo = "SELECT id, link, video_length FROM webtooninfo"
+bringinfo = "SELECT id, link, video_length FROM WebtoonInfo"
 cur.execute(bringinfo)
 idandlinkandlength = cur.fetchall()
 
