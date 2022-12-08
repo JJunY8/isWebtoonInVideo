@@ -173,13 +173,14 @@ download_url_list = []
 linklist = []
 
 SEARCH_KEYWORD = input('검색어를 입력하세요 : ').replace(' ', '+')
-PAGE_NUMGER = input('스크롤링 횟수를 입력하세요 : ')
+PAGE_NUMGER = input('스크롤 횟수를 입력하세요 : ')
 
 #webtooninfo 연결 수립
 con = pymysql.connect(host='34.64.236.142', user='root', password='root',
                       db='webtooninfodb', charset='utf8mb4', autocommit=True)
 cur = con.cursor()
-print(con)
+print('구글 클라우드 DB 연결이 수립되었습니다. : '+str(con))
+time.sleep(2)
 
 #동영상 플랫폼 영상 수집
 driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
@@ -191,11 +192,16 @@ html_source = driver.page_source
 soup_source = BeautifulSoup(html_source, 'html.parser')
 content_total = soup_source.find_all(class_ = 'yt-simple-endpoint style-scope ytd-video-renderer')
 content_total_link = list(map(lambda data: "https://youtube.com" + data["href"], content_total))
+print(str(SEARCH_KEYWORD) + '에 대한 영상 url을 저장하였습니다.')
+print(content_total_link)
+time.sleep(2)
 
 #link 목록 저장
-sql = "insert into links (link) (select link from webtooninfo);"
+sql = "insert into links (link) (select link from WebtoonInfo);"
 cur.execute(sql)
+print(sql)
 
+print('영상에 대한 정보를 db에 저장합니다.')
 #영상 정보 db에 삽입
 for contentlink in content_total_link :
     yt = YouTube(contentlink)
@@ -211,14 +217,11 @@ for contentlink in content_total_link :
         # 정보 저장용 sql문
         sql = "insert into WebtoonInfo (id, title, link, uploader, video_length, keyword) values ('{}', '{}', '{}', '{}', '{}', '{}')".format(
             id, title, contentlink, uploader, length, SEARCH_KEYWORD)
+        print(str(contentlink)+' : id, title, link, uploader, video_length, keyword가 db에 저장되었습니다.')
         cur.execute(sql)
     except :
         pass
 
-
-#이전에 저장한 데이터와 중복된 영상을 db에서 제거하는 sql문
-sql = '''DELETE FROM WebtoonInfo WHERE id IN (SELECT id FROM (SELECT id FROM WebtoonInfo GROUP BY link HAVING count(*) > 1) temp_table);'''
-cur.execute(sql)
 
 #작업에 필요한 컬럼을 다운로드. id컬럼과 link컬럼, video_length 컬럼 가져오기
 bringinfo = "SELECT id, link, video_length FROM WebtoonInfo"
@@ -229,6 +232,8 @@ idandlinkandlength = cur.fetchall()
 pastlinkinfo = "SELECT link FROM links"
 cur.execute(pastlinkinfo)
 links = cur.fetchall()
+
+print('동영상을 다운로드 합니다.')
 
 #영상을 다운로드 하기 위해 필요한 정보들 각 저장
 for bringid, bringlink, bringlength in idandlinkandlength :
@@ -254,11 +259,14 @@ for downloadid, downloadlink in idlink_info.items() :
     try :
         yt.streams.filter(progressive=True, file_extension="mp4").first().download(output_path=VIDEO_DOWNLOAD_FOLDER,
                                                                                    filename=(downloadid + '.mp4'))
+        print(str(downloadid) + ': 동영상을 다운로드 합니다.')
     except Exception as e:
         print(str(e) + ' : download를 실행하지 못 했습니다.')
 
 print('동영상 다운로드가 끝났습니다.')
+time.sleep(2)
 print('프레임 추출을 시작합니다.')
+time.sleep(2)
 #비디오 길이에 따라 추출하는 frame의 수 조정
 video_name_list, video_path_dict = getFilePathandName(VIDEO_DOWNLOAD_FOLDER) # file_name_list는 id list와 같다, 하지만 혹시 모르니까 폴더 내에서 검사
 
@@ -288,21 +296,38 @@ for id, length in idlength_info.items() :
                     next_frame += fps * extractlength
                     if next_frame > int(videoFrameCount):
                         break
+            print(str(id) + ' 프레임을 추출하였습니다.')
+            time.sleep(1)
     except Exception as e :
-        print(str(e) + ' 프레임 추출 실패했습니다.')
+        print(str(e) + ' 이미 프레임 추출이 끝난 영상 입니다.')
+        time.sleep(1)
 
-print('프레임 추출이 끝났습니다.')
-print('이미지 전처리 시작합니다.')
+print('전체 동영상에 대한 프레임 추출이 끝났습니다.')
+time.sleep(2)
+print('프레임에 대한 이미지 전처리 시작합니다.')
 
 image_name_list, image_path_dict = getFilePathandName(FRAME_SAVE_FOLDER)
+
+imagetogray = {}
+imagetoCr = {}
+imagetoCb = {}
+
+for imageid in image_name_list :
+    image = cv2.imread(image_path_dict[imageid], 1)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+    Y, Cr, Cb = cv2.split(image)
+    imagetogray[imageid] = Y
+    imagetoCr[imageid] = Cr
+    imagetoCb[imageid] = Cb
+
 
 for imageid in image_name_list :
     contoursSavePath = CONTOURS_SAVE_FOLDER + imageid + '.jpg'
     cleanSavePath = ClEAN_SAVE_FOLDER + imageid + '.jpg'
     havetextSavePath = HAVETEXT_SAVE_FOLDER + imageid + '.jpg'
 
-    image = cv2.imread(image_path_dict[imageid])
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    image = cv2.imread(image_path_dict[imageid], 1)
+    gray = imagetogray[imageid]
 
     cleanImage = ImageClear(gray)
     cv2.imwrite(cleanSavePath, cleanImage)
@@ -314,7 +339,6 @@ for imageid in image_name_list :
         cv2.drawContours(image, [contours[contour]], 0, (255, 0, 0), 3)
     rgb_count = cv2.inRange(image, (0, 0, 0), (255, 0, 0))
     cv2.imwrite(contoursSavePath, rgb_count)
-
     result = ocrtostr(cleanSavePath, 'kor+eng')
     if len(result) != 0 :
         shutil.copy(image_path_dict[imageid], havetextSavePath)
@@ -325,6 +349,8 @@ print('이미지 전처리가 끝났습니다.')
 
 sql = "delete from links;"
 cur.execute(sql)
+
+print('db 연결을 해제합니다..')
 
 con.commit()
 con.close()
